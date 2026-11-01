@@ -86,9 +86,6 @@ const MENU = [
 
 const money = n => '$' + n.toLocaleString('es-CO');
 
-// Hoja de albahaca (para los platos sin foto)
-const LEAF = '<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 2C32 10 34 27 20 38C6 27 8 10 20 2Z" fill="none" stroke="#C7A06A" stroke-width="1.6"/><path d="M20 5V36M20 14l6-4M20 21l7-5M20 28l6-4M20 14l-6-4M20 21l-7-5M20 28l-6-4" stroke="#C7A06A" stroke-width="1" fill="none"/></svg>';
-
 /* ======================================================================
    Entradas de texto
    ====================================================================== */
@@ -100,110 +97,262 @@ document.querySelectorAll('.rv').forEach(el => io.observe(el));
 /* ======================================================================
    Carta y pedido
    ====================================================================== */
+// Foto del encabezado de cada categoría (img/menu/<foto>.webp)
+const BANNERS = {
+  tradicionales: 'hawaiana', especiales: 'especial-casa', hamburguesas: 'hamb-house', perros: 'perro-loco',
+  papitas: 'papas-locas-especiales', panzerottis: 'panzerotti-cuatro-quesos', platos: 'chatas', bebidas: 'granizado',
+};
+// Fila de destacados: [categoría, nombre del plato]
+const DESTACADOS = [
+  ['especiales', 'Especial Pizzería'], ['tradicionales', 'Campesina'], ['hamburguesas', 'La House'],
+  ['perros', 'Loco House'], ['papitas', 'Papas locas especiales'], ['panzerottis', 'Panzerotti cuatro quesos'],
+];
+
 const list = document.getElementById('menu-list');
-const index = document.getElementById('menu-index');
+const chips = document.getElementById('chips');
+const rail = document.getElementById('rail');
 const cart = new Map();
 const byId = new Map();
+const PLUS = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+const isPizza = id => id === 'tradicionales' || id === 'especiales';
+
+// Destella las piezas de un plato al entrar, una tras otra (subida, puntos, precio, botón)
+const itemIo = new IntersectionObserver(entries => {
+  let k = 0;
+  entries.forEach(en => {
+    if (!en.isIntersecting) return;
+    en.target.style.setProperty('--d', (k++ * 70) + 'ms');
+    en.target.classList.add('show');
+    itemIo.unobserve(en.target);
+  });
+}, { rootMargin: '0px 0px -8% 0px' });
 
 MENU.forEach(cat => {
-  const a = document.createElement('a');
-  a.href = '#cat-' + cat.id;
-  a.textContent = cat.nombre;
-  index.appendChild(a);
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'chip';
+  chip.dataset.cat = cat.id;
+  chip.textContent = cat.nombre;
+  chips.appendChild(chip);
 
   const sec = document.createElement('section');
-  sec.className = 'cat';
+  sec.className = 'cat rv';
   sec.id = 'cat-' + cat.id;
+  sec.setAttribute('aria-labelledby', 'h-' + cat.id);
   sec.innerHTML = `
-    <div class="cat__head rv"><h3>${cat.nombre}</h3>${cat.nota ? `<p>${cat.nota}</p>` : ''}</div>
+    <div class="cat__media">
+      <div class="cat__banner"><img src="img/menu/${BANNERS[cat.id]}.webp" alt="" loading="lazy" width="676" height="676"></div>
+      <div class="cat__head"><span class="cat__count">${cat.items.length} ${cat.items.length === 1 ? 'plato' : 'platos'}</span><h2 id="h-${cat.id}">${cat.nombre}</h2></div>
+    </div>
+    ${cat.nota ? `<p class="cat__note">${cat.nota}</p>` : ''}
     <ul class="items"></ul>`;
 
   const ul = sec.querySelector('.items');
   cat.items.forEach(([nombre, desc, precio], k) => {
-    const foto = cat.fotos[k];
     const id = `${cat.id}-${k}`;
-    const full = cat.id === 'hamburguesas' ? `Hamburguesa ${nombre}` : cat.id === 'perros' ? `Perro ${nombre}` : cat.id.includes('pizza') || cat.id === 'tradicionales' || cat.id === 'especiales' ? `Pizza ${nombre}` : nombre;
-    byId.set(id, { nombre: full, precio, pizza: cat.id === 'tradicionales' || cat.id === 'especiales' });
+    const full = cat.id === 'hamburguesas' ? `Hamburguesa ${nombre}` : cat.id === 'perros' ? `Perro ${nombre}` : isPizza(cat.id) ? `Pizza ${nombre}` : nombre;
+    byId.set(id, { nombre: full, corto: nombre, precio, pizza: isPizza(cat.id), cat: cat.id, foto: cat.fotos[k] });
     const li = document.createElement('li');
-    li.className = 'item rv';
-    li.style.setProperty('--i', k % 4);
+    li.className = 'item pi';
+    li.id = 'it-' + id;
+    li.dataset.search = `${nombre} ${desc}`.toLowerCase();
     li.innerHTML = `
-      ${foto
-        ? `<img class="item__img" src="img/menu/thumb/${foto}.webp" alt="${full}" loading="lazy" width="240" height="240">`
-        : `<span class="item__img item__img--none" aria-hidden="true">${LEAF}</span>`}
-      <span class="item__name">${nombre}</span>
-      <span class="item__price">${precio ? money(precio) : 'Consultar'}</span>
-      <span class="item__desc">${desc}</span>
-      <div class="item__ctl" data-id="${id}"></div>`;
+      <div class="item__top">
+        <span class="item__name">${nombre}</span>
+        <span class="dots" aria-hidden="true"></span>
+        <span class="price">${precio ? `${isPizza(cat.id) ? '<small>desde</small> ' : ''}${money(precio)}` : 'Consultar'}</span>
+        <button type="button" class="add" data-id="${id}" aria-label="Agregar ${full} al pedido">${PLUS}</button>
+      </div>
+      <p class="item__desc">${desc}</p>`;
     ul.appendChild(li);
+    itemIo.observe(li);
   });
   list.appendChild(sec);
-  sec.querySelectorAll('.rv').forEach(el => io.observe(el));
+  io.observe(sec);
 });
 
-function drawCtl(id) {
-  const box = list.querySelector(`.item__ctl[data-id="${id}"]`);
-  const q = cart.get(id) || 0;
-  const name = byId.get(id).nombre;
-  box.innerHTML = q
-    ? `<span class="qty pop"><button type="button" data-act="minus" aria-label="Quitar uno de ${name}">−</button><span aria-live="polite">${q}</span><button type="button" data-act="plus" aria-label="Agregar otro de ${name}">+</button></span>`
-    : `<button type="button" class="add" data-act="plus" aria-label="Agregar ${name} al pedido">Agregar</button>`;
+// Fila de destacados
+DESTACADOS.forEach(([catId, nombre]) => {
+  const cat = MENU.find(c => c.id === catId);
+  const k = cat ? cat.items.findIndex(it => it[0] === nombre) : -1;
+  if (k < 0) return;
+  const id = `${catId}-${k}`, it = byId.get(id);
+  if (!it.foto) return;
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'card';
+  card.dataset.go = id;
+  card.innerHTML = `
+    <div class="card__img"><img src="img/menu/${it.foto}.webp" alt="${it.nombre}" loading="lazy" width="676" height="676"></div>
+    <div class="card__txt"><small>${cat.nombre}</small><b>${it.corto}</b><em>${it.precio ? (it.pizza ? 'desde ' : '') + money(it.precio) : 'Consultar'}</em></div>`;
+  rail.appendChild(card);
+});
+
+// Desplazamiento con margen para la barra principal y la de categorías
+const menuNav = document.querySelector('.menu-nav');
+function goTo(el) {
+  const off = (document.querySelector('.nav')?.offsetHeight || 64) + menuNav.offsetHeight + 12;
+  scrollTo({ top: el.getBoundingClientRect().top + scrollY - off, behavior: reduce ? 'auto' : 'smooth' });
 }
-
-list.addEventListener('click', ev => {
-  const btn = ev.target.closest('button[data-act]');
-  if (!btn) return;
-  const id = btn.closest('.item__ctl').dataset.id;
-  const q = (cart.get(id) || 0) + (btn.dataset.act === 'plus' ? 1 : -1);
-  q > 0 ? cart.set(id, q) : cart.delete(id);
-  drawCtl(id);
-  const again = list.querySelector(`.item__ctl[data-id="${id}"] button[data-act="${btn.dataset.act}"]`) || list.querySelector(`.item__ctl[data-id="${id}"] button`);
-  again && again.focus();
-  drawOrder();
+chips.addEventListener('click', e => {
+  const b = e.target.closest('.chip');
+  if (b) goTo(document.getElementById('cat-' + b.dataset.cat));
+});
+rail.addEventListener('click', e => {
+  const c = e.target.closest('.card');
+  if (!c) return;
+  const li = document.getElementById('it-' + c.dataset.go);
+  li.classList.add('show');
+  goTo(li);
+  li.classList.remove('flash'); void li.offsetWidth; li.classList.add('flash');
 });
 
-const orderEl = document.getElementById('order');
-function drawOrder() {
-  let n = 0, total = 0, consultar = false, pizza = false;
-  const lines = [];
-  cart.forEach((q, id) => {
-    const it = byId.get(id);
-    n += q; total += it.precio * q;
-    if (!it.precio) consultar = true;
-    if (it.pizza) pizza = true;
-    lines.push(`• ${q} × ${it.nombre}${it.precio ? ' — ' + money(it.precio * q) : ''}`);
-  });
-  orderEl.hidden = n === 0;
-  document.getElementById('order-count').textContent = n === 1 ? '1 producto' : `${n} productos`;
-  document.getElementById('order-total').textContent = money(total);
-  const msg = [
-    'Hola, quiero hacer este pedido:', '', ...lines, '',
-    `Total aproximado: ${money(total)}`,
-    pizza ? '(Pizzas: el tamaño lo confirmo con ustedes.)' : '',
-    consultar ? '(Hay productos con precio por consultar.)' : '',
-    '', 'Nombre:', 'Dirección:',
-  ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n');
-  document.getElementById('order-send').href = `https://wa.me/${WA}?text=${encodeURIComponent(msg)}`;
-}
-
-document.getElementById('order-clear').addEventListener('click', () => {
-  const ids = [...cart.keys()];
-  cart.clear();
-  ids.forEach(drawCtl);
-  drawOrder();
-});
-
-MENU.forEach(cat => cat.items.forEach((_, k) => drawCtl(`${cat.id}-${k}`)));
-
-// Resalta la categoría que se está viendo en el índice de la carta
+// Píldora activa según la categoría en pantalla, y línea de progreso de la carta
 const spy = new IntersectionObserver(entries => {
   entries.forEach(en => {
     if (!en.isIntersecting) return;
-    index.querySelectorAll('a').forEach(a => {
-      const on = a.getAttribute('href') === '#' + en.target.id;
-      a.classList.toggle('is-on', on);
-      if (on && innerWidth < 768) a.scrollIntoView({ inline: 'center', block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+    const id = en.target.id.slice(4);
+    chips.querySelectorAll('.chip').forEach(c => {
+      const on = c.dataset.cat === id;
+      c.setAttribute('aria-current', on ? 'true' : 'false');
+      if (on) chips.scrollTo({ left: c.offsetLeft - chips.offsetWidth / 2 + c.offsetWidth / 2, behavior: reduce ? 'auto' : 'smooth' });
     });
   });
-}, { rootMargin: '-40% 0px -55% 0px' });
-document.querySelectorAll('.cat').forEach(s => spy.observe(s));
+}, { rootMargin: '-35% 0px -60% 0px' });
+list.querySelectorAll('.cat').forEach(s => spy.observe(s));
+
+const progress = document.getElementById('menu-progress');
+addEventListener('scroll', () => {
+  const r = list.getBoundingClientRect();
+  const p = Math.min(1, Math.max(0, (innerHeight * 0.5 - r.top) / r.height));
+  progress.style.transform = `scaleX(${p.toFixed(3)})`;
+}, { passive: true });
+
+// Búsqueda
+const searchBtn = document.getElementById('search-btn');
+const searchBox = document.getElementById('menu-search');
+const q = document.getElementById('menu-q');
+const empty = document.getElementById('menu-empty');
+searchBtn.addEventListener('click', () => {
+  const on = !searchBox.classList.contains('on');
+  searchBox.classList.toggle('on', on);
+  searchBtn.setAttribute('aria-expanded', on);
+  if (on) q.focus(); else { q.value = ''; filter(''); }
+});
+const norm = t => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+function filter(text) {
+  const t = norm(text.trim());
+  let any = false;
+  list.querySelectorAll('.cat').forEach(sec => {
+    let n = 0;
+    sec.querySelectorAll('.item').forEach(li => {
+      const ok = !t || norm(li.dataset.search).includes(t);
+      li.hidden = !ok;
+      if (ok) { n++; li.classList.add('show'); }
+    });
+    sec.hidden = n === 0;
+    if (n) any = true;
+  });
+  empty.hidden = any;
+}
+q.addEventListener('input', () => filter(q.value));
+
+// Pedido
+const bar = document.getElementById('bar');
+const sheet = document.getElementById('sheet');
+const scrimO = document.getElementById('scrim-order');
+const lines = document.getElementById('sheet-lines');
+
+function setQty(id, n) {
+  n > 0 ? cart.set(id, n) : cart.delete(id);
+  const btn = list.querySelector(`.add[data-id="${id}"]`);
+  if (btn) {
+    btn.classList.toggle('done', n > 0);
+    btn.innerHTML = n > 0 ? `<span>${n}</span>` : PLUS;
+    btn.setAttribute('aria-label', n > 0 ? `${byId.get(id).nombre}: ${n} en el pedido. Agregar otro` : `Agregar ${byId.get(id).nombre} al pedido`);
+  }
+  drawOrder();
+}
+
+list.addEventListener('click', e => {
+  const b = e.target.closest('.add');
+  if (!b) return;
+  setQty(b.dataset.id, (cart.get(b.dataset.id) || 0) + 1);
+  bar.classList.remove('bump'); void bar.offsetWidth; bar.classList.add('bump');
+});
+
+function drawOrder() {
+  let n = 0, total = 0, consultar = false, pizza = false;
+  const msgLines = [];
+  lines.innerHTML = '';
+  cart.forEach((qty, id) => {
+    const it = byId.get(id);
+    n += qty; total += it.precio * qty;
+    if (!it.precio) consultar = true;
+    if (it.pizza) pizza = true;
+    msgLines.push(`• ${qty} × ${it.nombre}${it.precio ? ' — ' + money(it.precio * qty) : ''}`);
+    const row = document.createElement('div');
+    row.className = 'line';
+    row.innerHTML = `
+      <div class="line__name"><b>${it.nombre}</b><small>${it.precio ? money(it.precio) + ' c/u' : 'Precio por consultar'}</small></div>
+      <div class="qty">
+        <button type="button" data-q="-1" data-id="${id}" aria-label="Quitar uno de ${it.nombre}">−</button>
+        <span aria-live="polite">${qty}</span>
+        <button type="button" data-q="1" data-id="${id}" aria-label="Agregar otro de ${it.nombre}">+</button>
+      </div>`;
+    lines.appendChild(row);
+  });
+  if (!n) lines.innerHTML = '<p class="line-empty">Tu pedido está vacío. Toca + en la carta para agregar algo.</p>';
+
+  bar.classList.toggle('on', n > 0);
+  document.getElementById('bar-count').textContent = n;
+  document.getElementById('bar-total').textContent = money(total);
+  document.getElementById('sheet-total').textContent = money(total);
+
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  const name = document.getElementById('f-name').value.trim();
+  const addr = document.getElementById('f-addr').value.trim();
+  const notes = document.getElementById('f-notes').value.trim();
+  const msg = [
+    'Hola, quiero hacer este pedido:', '', ...msgLines, '',
+    `Total aproximado: ${money(total)}`,
+    pizza ? '(Pizzas: el tamaño lo confirmo con ustedes.)' : '',
+    consultar ? '(Hay productos con precio por consultar.)' : '',
+    '', `Modo: ${mode}`, `Nombre: ${name}`,
+    mode === 'Domicilio' ? `Dirección: ${addr}` : '',
+    notes ? `Notas: ${notes}` : '',
+  ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n').trim();
+  document.getElementById('order-send').href = `https://wa.me/${WA}?text=${encodeURIComponent(msg)}`;
+}
+
+lines.addEventListener('click', e => {
+  const b = e.target.closest('button[data-q]');
+  if (!b) return;
+  setQty(b.dataset.id, (cart.get(b.dataset.id) || 0) + +b.dataset.q);
+  const again = lines.querySelector(`button[data-id="${b.dataset.id}"][data-q="${b.dataset.q}"]`);
+  (again || document.getElementById('sheet-title')).focus();
+});
+sheet.addEventListener('input', drawOrder);
+sheet.addEventListener('change', () => {
+  document.getElementById('field-addr').hidden = document.getElementById('mode-local').checked;
+  drawOrder();
+});
+
+let lastFocus = null;
+function openSheet() {
+  lastFocus = document.activeElement;
+  sheet.hidden = false;
+  requestAnimationFrame(() => { sheet.classList.add('on'); scrimO.classList.add('on'); });
+  document.getElementById('sheet-title').focus({ preventScroll: true });
+}
+function closeSheet() {
+  sheet.classList.remove('on'); scrimO.classList.remove('on');
+  setTimeout(() => { if (!sheet.classList.contains('on')) sheet.hidden = true; }, 350);
+  lastFocus && lastFocus.focus({ preventScroll: true });
+}
+document.getElementById('bar-btn').addEventListener('click', openSheet);
+document.getElementById('sheet-close').addEventListener('click', closeSheet);
+scrimO.addEventListener('click', closeSheet);
+addEventListener('keydown', e => { if (e.key === 'Escape' && sheet.classList.contains('on')) closeSheet(); });
+
+drawOrder();
