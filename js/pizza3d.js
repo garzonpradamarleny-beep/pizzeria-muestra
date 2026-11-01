@@ -175,7 +175,6 @@
   if (animated) {
     gsap.registerPlugin(ScrollTrigger);
     ScrollTrigger.config({ ignoreMobileResize: true });   // la barra del navegador del celular no reinicia la animación
-    if (LITE) ScrollTrigger.normalizeScroll(true);         // scroll táctil estable mientras la portada está fija
     const stage = document.getElementById('stage');
     const hero = document.getElementById('hero');
     const panels = [...story.querySelectorAll('.panel')];

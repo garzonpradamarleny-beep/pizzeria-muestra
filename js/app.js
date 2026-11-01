@@ -188,6 +188,19 @@ DESTACADOS.forEach(([catId, nombre]) => {
   rail.appendChild(card);
 });
 
+// Flechas de la fila de destacados (además de deslizar con el dedo)
+const railPrev = document.getElementById('rail-prev'), railNext = document.getElementById('rail-next');
+const railStep = () => (rail.querySelector('.card')?.offsetWidth || 280) + 14;
+railPrev.addEventListener('click', () => rail.scrollBy({ left: -railStep(), behavior: reduce ? 'auto' : 'smooth' }));
+railNext.addEventListener('click', () => rail.scrollBy({ left: railStep(), behavior: reduce ? 'auto' : 'smooth' }));
+function railArrows() {
+  railPrev.disabled = rail.scrollLeft < 8;
+  railNext.disabled = rail.scrollLeft + rail.clientWidth > rail.scrollWidth - 8;
+}
+rail.addEventListener('scroll', railArrows, { passive: true });
+addEventListener('resize', railArrows);
+railArrows();
+
 // Desplazamiento con margen para la barra principal y la de categorías
 const menuNav = document.querySelector('.menu-nav');
 function goTo(el) {
