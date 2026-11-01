@@ -88,6 +88,9 @@ p { margin: 0; }
 .pz3d .scene, .pz-static .scene { opacity: 0; transition: opacity .9s ease; }
 .pz3d .scene.is-ready, .pz-static .scene.is-ready { opacity: 1; }
 .pz-lite .light { display: none; }
+.pz-lite .scene { perspective: none; }
+.pz-lite .pizza, .pz-lite .pizza .g { transform-style: flat; transform: none !important; }
+.pz-lite .hero h1 { text-shadow: 0 2px 16px rgba(0,0,0,.5); }
 .pz-lite .pizza .flake, .pz-lite .pizza .shred, .pz-lite .pizza .drop, .pz-lite .pizza .shadow, .pz-lite .pizza .top { will-change: auto; }
 .light { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: soft-light; }
 .vignette { position: absolute; inset: 0; pointer-events: none;
@@ -129,16 +132,17 @@ p { margin: 0; }
 
 .panel { color: var(--marfil); }
 .panel .tag { font-family: var(--f-display); font-style: italic; font-weight: 500; font-size: 1.35rem; color: var(--bronce); }
-.panel h2 { font-family: var(--f-display); font-weight: 700; font-size: clamp(2.3rem, 4vw, 3.9rem); line-height: 1.02; letter-spacing: -.015em; }
+.panel h2 { font-family: var(--f-display); font-weight: 700; font-size: clamp(2.1rem, min(4vw, 6.4vh), 3.9rem); line-height: 1.02; letter-spacing: -.015em; }
 .panel p { max-width: 40ch; color: #d9d1c8; }
 .panel .stat { display: flex; align-items: center; gap: 18px; max-width: 36ch; }
 .panel .stat strong { font-family: var(--f-display); font-size: clamp(3.6rem, 6vw, 5.4rem); line-height: .9; color: var(--bronce); }
 .panel .stat span { font-size: 15px; color: var(--marfil-2); }
-.panel__photo { width: 170px; height: auto; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 200px 200px 18px 18px; }
+.panel__photo { width: min(170px, 17vh); height: auto; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 200px 200px 18px 18px; }
 
 /* Con animación: los paneles flotan dentro de la portada fija */
 .pz3d .panel {
-  position: absolute; z-index: 3; top: 50%; transform: translateY(-50%);
+  position: absolute; z-index: 3; top: calc(50% + var(--nav-h) / 2); transform: translateY(-50%);
+  max-height: calc(100vh - var(--nav-h) - 32px);
   width: min(500px, 40vw); display: grid; gap: 18px; justify-items: start; pointer-events: none;
 }
 .pz3d .panel > * { pointer-events: auto; }

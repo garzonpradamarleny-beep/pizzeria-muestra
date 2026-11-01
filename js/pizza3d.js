@@ -18,8 +18,9 @@
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const animated = !!(window.gsap && window.ScrollTrigger) && !reduce;
   document.documentElement.classList.add(animated ? 'pz3d' : 'pz-static');
-  // Celulares y tabletas: modo liviano. Menos piezas, fotos más pequeñas, sin filtros ni máscaras,
-  // y la escena solo se vuelve a dibujar cuando cambia el scroll (si no, el celular se traba o pinta en negro).
+  // Celulares y tabletas: modo liviano. Sin 3D del navegador (preserve-3d traba y pinta capas en negro
+  // en muchos celulares): la perspectiva se calcula aquí y cada capa se mueve como una imagen plana.
+  // Además: menos piezas, fotos más pequeñas, sin filtros ni máscaras, y solo se dibuja al hacer scroll.
   const LITE = matchMedia('(pointer: coarse)').matches || innerWidth < 768;
   if (LITE) document.documentElement.classList.add('pz-lite');
   const N = (full, lite) => (LITE ? lite : full);
@@ -27,14 +28,7 @@
   let visible = true, raf = 0, dirty = true;   // estado del dibujo (ver loop al final)
 
   /* ------------------------------------------------------------ fondo de piedra */
-  const stone = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
-  <filter id="b" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".0045" numOctaves="5" seed="4"/><feColorMatrix values=".24 0 0 0 .018  .23 0 0 0 .02  .22 0 0 0 .02  0 0 0 0 1"/></filter>
-  <filter id="v" x="0" y="0" width="100%" height="100%"><feTurbulence type="turbulence" baseFrequency=".0026 .0072" numOctaves="4" seed="11"/><feColorMatrix values="0 0 0 0 .62  0 0 0 0 .6  0 0 0 0 .58  -14 0 0 0 1.05"/></filter>
-  <filter id="g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" seed="2"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  1.4 0 0 0 -.78"/></filter>
-  <rect width="1600" height="1000" fill="#1a1716"/><rect width="1600" height="1000" filter="url(#b)"/>
-  <rect width="1600" height="1000" filter="url(#v)" opacity=".16"/><rect width="1600" height="1000" filter="url(#g)" opacity=".08"/></svg>`;
-  document.getElementById('stone').style.backgroundImage =
-    `url("data:image/svg+xml,${encodeURIComponent(stone)}")`;
+  document.getElementById('stone').style.backgroundImage = 'url("img/piedra.webp")';
 
   /* ------------------------------------------------------------ construcción */
   const D = { board: 720, base: 600, tom: 150 };
@@ -53,6 +47,7 @@
     const img = put('img', 'top', size, parent);
     img.alt = ''; img.draggable = false; img.decoding = 'async'; img.src = src;
     img.style.transform = `translateZ(${z}px)`;
+    (parent.__leaves ||= []).push({ el: img, z });
     return img;
   }
   function discs(parent, size, zs, c1, c2) {
@@ -62,6 +57,7 @@
       d.style.background = `radial-gradient(circle at 50% 50%, ${c1} 60%, ${c2} 100%)`;
       if (!LITE) d.style.filter = `brightness(${1 - (i / Math.max(1, zs.length - 1)) * 0.35})`;
       d.style.transform = `translateZ(${z}px)`;
+      (parent.__leaves ||= []).push({ el: d, z });
     });
   }
   function shadowDiv(parent, size, z) {
@@ -80,6 +76,7 @@
       g.style.borderRadius = '50%';
       g.style.background = `radial-gradient(circle at 34% 30%, rgba(255,250,240,${power}) 0, rgba(255,250,240,0) 36%), radial-gradient(circle, rgba(20,4,0,0) 58%, rgba(20,4,0,.4) 100%)`;
       g.style.transform = `translateZ(${z}px)`;
+      (parent.__leaves ||= []).push({ el: g, z });
       return g;
     }
     const g = put('div', 'gloss', size, parent);
@@ -178,6 +175,7 @@
   if (animated) {
     gsap.registerPlugin(ScrollTrigger);
     ScrollTrigger.config({ ignoreMobileResize: true });   // la barra del navegador del celular no reinicia la animación
+    if (LITE) ScrollTrigger.normalizeScroll(true);         // scroll táctil estable mientras la portada está fija
     const stage = document.getElementById('stage');
     const hero = document.getElementById('hero');
     const panels = [...story.querySelectorAll('.panel')];
@@ -389,6 +387,86 @@
       `radial-gradient(circle at ${n1(50 + px / W * 100 + mx * 30)}% ${n1(50 + my * 30)}%, rgba(255,226,180,.34), rgba(255,226,180,0) 46%)`;
   }
 
+
+  /* ------------------------------------------------------------ dibujo plano (celular) */
+  // Proyecta cada pieza (x, y, altura) con la misma inclinación y perspectiva que la versión 3D,
+  // y la coloca con un transform 2D: mover, escalar (achatada según la inclinación) y girar.
+  const DEG = Math.PI / 180, PERSP = 1200;
+  function render2D() {
+    const s = st;
+    const mob = W < 768;
+    const px = mob ? 0 : s.side * W * 0.21;
+    const oy = s.y * fit + (mob ? -s.focus * H * 0.23 : 0);
+    const k = fit * s.sc * (mob ? 1 - 0.1 * s.focus : 1 - 0.08 * Math.abs(s.side));
+    const tiltDeg = s.rx + 3.6;
+    const cX = Math.cos(tiltDeg * DEG), sX = Math.sin(tiltDeg * DEG);
+    const cZ = Math.cos(s.rz * DEG), sZ = Math.sin(s.rz * DEG);
+
+    function place(el, x, y, z, rot, squash = cX, extra = 1) {
+      const xr = x * cZ - y * sZ, yr = x * sZ + y * cZ, zz = z + s.sink;
+      const Y = yr * cX - zz * sX, depth = yr * sX + zz * cX;
+      const f = PERSP / Math.max(240, PERSP - depth * k);
+      const S = k * f * extra;
+      el.style.transform = `translate(${n1(px + xr * k * f)}px, ${n1(oy + Y * k * f)}px) scale(${S.toFixed(4)}, ${(S * squash).toFixed(4)}) rotate(${n1(rot)}deg)`;
+    }
+    const layer = (g, gz, extra = 1) => g.__leaves.forEach(l => place(l.el, 0, 0, gz + l.z, s.rz, cX, extra));
+    // sombra: cae hacia abajo a la derecha (luz fija arriba a la izquierda), más suave cuanto más alto está lo que la proyecta
+    function shade(el, x, y, hostZ, gap) {
+      const d = gap * 0.32, ox = 0.35 * d, oy2 = 0.45 * d;
+      place(el, x + ox * cZ + oy2 * sZ, y - ox * sZ + oy2 * cZ, hostZ + 0.6, s.rz, cX, 1 + gap * 0.002);
+      el.style.opacity = clamp(0.62 - gap * 0.0024, 0, 0.62).toFixed(2);
+    }
+
+    const zD = s.zDough, zS = s.zSauce, zC = s.zCheese;
+    place(boardShadow, 8, 10, s.boardZ - 30, s.rz);
+    boardShadow.style.opacity = '0.75';
+    layer(gBoard, s.boardZ);
+    layer(gDough, zD);
+    layer(gSauce, zS);
+    layer(gCheese, zC, s.cheesePuff);
+    shade(shDough, 0, 0, s.boardZ, (zD + 2) - s.boardZ);
+    shade(shSauce, 0, 0, zD + Z.dough, zS - (zD + Z.dough));
+    shade(shCheese, 0, 0, zS, zC - zS);
+
+    const bob = clamp((s.zTom - Z.tom) / 220);
+    toms.forEach(tm => {
+      const r = tm.r * (1 + s.tomSpread * 1.6);
+      const x = Math.cos(tm.a) * r, y = Math.sin(tm.a) * r;
+      const z = s.zTom + tm.dz * bob;
+      const sq = Math.cos(Math.max(0, tiltDeg + tm.tx * s.tomTilt) * DEG);   // se inclinan hacia la cámara
+      const rot = s.rz + tm.rot + s.tomSpin * tm.spin;
+      tm.g.__leaves.forEach(l => place(l.el, x, y, z + l.z, rot, sq, tm.sc));
+      shade(tm.sh, x, y, zC, z - zC);
+      setLook(tm.img, 1.02 + 0.08 * bob);
+    });
+
+    const gat = 1 - 0.5 * s.oregGather, p = s.oreg;
+    flakes.forEach(fl => {
+      const x = lerp(fl.x0, fl.x1 * gat, p), y = lerp(fl.y0, fl.y1 * gat, p);
+      const z = lerp(Z.oreg, fl.z1, p) + s.oregLift * fl.lift;
+      place(fl.e, x, y, z, fl.rot + fl.spin * p, cX * Math.max(.25, Math.abs(Math.cos(fl.flip * p * DEG))));
+    });
+    const cb = s.cheeseBurst;
+    shreds.forEach(sh => {
+      place(sh.e, lerp(sh.x0, sh.x1, cb) * s.cheesePuff, lerp(sh.y0, sh.y1, cb) * s.cheesePuff, zC + 1 + sh.z1 * cb,
+        sh.rot + sh.spin * cb, cX * Math.max(.3, Math.abs(Math.cos(sh.flip * cb * DEG))));
+      sh.e.style.opacity = clamp(cb * 5).toFixed(2);
+    });
+    const sb = s.sauceBurst;
+    drops.forEach(dp => {
+      place(dp.e, lerp(dp.x0, dp.x1, sb), lerp(dp.y0, dp.y1, sb), zS + 1 + dp.z1 * sb, dp.rot,
+        cX * Math.max(.3, Math.abs(Math.cos(dp.flip * sb * DEG))));
+      dp.e.style.opacity = clamp(sb * 5).toFixed(2);
+    });
+
+    const lift = (z, z0) => clamp((z - z0) / 110);
+    const bri = (z, z0) => (1 - s.dark * 0.72 * (1 - lift(z, z0))) * (0.94 + 0.12 * clamp((z + s.sink + 60) / 420));
+    setLook(imgBoard, bri(s.boardZ, 999) - 0.04);
+    setLook(imgDough, bri(zD, 0));
+    setLook(imgSauce, bri(zS, Z.sauce));
+    setLook(imgCheese, bri(zC, Z.cheese) + 0.03);
+  }
+
   // Solo se dibuja mientras la portada está en pantalla. En computador, en cada cuadro (sigue al mouse);
   // en celular, solo cuando el scroll cambia algo.
   function markDirty() { dirty = true; if (visible && !raf) raf = requestAnimationFrame(loop); }
@@ -397,7 +475,7 @@
     raf = 0;
     if (!visible || (LITE && !dirty)) return;
     dirty = false;
-    render();
+    (LITE ? render2D : render)();
     if (!LITE) raf = requestAnimationFrame(loop);
   }
   loop();
